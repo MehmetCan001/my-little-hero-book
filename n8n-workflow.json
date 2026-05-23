@@ -1,0 +1,344 @@
+{
+  "name": "My Little Hero Book – Hikaye Üretici",
+  "nodes": [
+    {
+      "id": "node-01-webhook",
+      "name": "Webhook: Hikaye Başlat",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [60, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "create-story",
+        "responseMode": "onReceived",
+        "responseData": "",
+        "options": {}
+      },
+      "webhookId": "my-little-hero-book-create-story"
+    },
+    {
+      "id": "node-02-extract-id",
+      "name": "Story ID Al",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [280, 300],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Webhook payload'dan story_id'yi güvenli şekilde çıkar\n// n8n sürümüne göre body $json veya $json.body altında gelebilir\nconst raw = $input.first().json;\nconst story_id = raw?.body?.story_id ?? raw?.story_id ?? null;\n\nif (!story_id) {\n  throw new Error('Webhook payload\\'da story_id bulunamadı. Gelen veri: ' + JSON.stringify(raw));\n}\n\nconsole.log('story_id alındı:', story_id);\nreturn [{ json: { story_id } }];"
+      }
+    },
+    {
+      "id": "node-03-fetch-story",
+      "name": "Supabase: Hikayeyi Çek",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/stories?id=eq.{{ $json.story_id }}&select=*,children(name,age,gender),languages(name,code),image_styles(name,label,example_prompt),story_original_images(image_url)",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $vars.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $vars.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Accept", "value": "application/json" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node-04-set-vars",
+      "name": "Değişkenleri Hazırla",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 300],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Supabase array response'ından ilk kaydı al ve flatten et\nconst rows = $input.first().json;\nconst story = Array.isArray(rows) ? rows[0] : rows;\n\nif (!story || !story.id) {\n  throw new Error('Hikaye Supabase\\'da bulunamadı. story_id geçersiz olabilir.');\n}\n\nconst child = story.children ?? {};\nconst lang  = story.languages ?? {};\nconst style = story.image_styles ?? {};\nconst photos = story.story_original_images ?? [];\nconst photo_url = photos.length > 0 ? photos[0].image_url : null;\n\nconsole.log('Hikaye yüklendi:', story.id, '| Çocuk:', child.name, '| Tema:', story.theme);\n\nreturn [{\n  json: {\n    story_id:       story.id,\n    story_title:    story.title ?? `${child.name}'in Macerası`,\n    child_name:     child.name ?? 'Kahraman',\n    child_age:      child.age ?? 6,\n    child_gender:   child.gender ?? 'prefer-not-to-say',\n    theme:          story.theme ?? 'forest',\n    user_prompt:    story.user_prompt ?? story.prompt ?? '',\n    language_name:  lang.name ?? 'Türkçe',\n    language_code:  lang.code ?? 'tr',\n    image_style:    style.label ?? style.name ?? 'Watercolor',\n    style_prompt:   style.example_prompt ?? '',\n    page_count:     story.page_count ?? story.total_pages ?? 8,\n    llm_model:      story.llm_model ?? 'gpt-4o-mini',\n    fal_model:      story.fal_model ?? 'fal-ai/flux/schnell',\n    resolution:     story.resolution ?? '768',\n    watermark:      story.watermark ?? true,\n    photo_url:      photo_url,\n  }\n}];"
+      }
+    },
+    {
+      "id": "node-05-openai",
+      "name": "OpenAI: Sayfa Metinleri Üret",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [940, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.OPENAI_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({\n  model: $json.llm_model,\n  response_format: { type: 'json_object' },\n  messages: [\n    {\n      role: 'system',\n      content: 'Sen profesyonel bir çocuk kitabı yazarısın. Yalnızca geçerli JSON ile yanıt ver, markdown kullanma.'\n    },\n    {\n      role: 'user',\n      content: `${$json.language_name} dilinde, ${$json.child_age} yaşındaki ${$json.child_name} adlı çocuk için ${$json.page_count} sayfalık bir masal yaz.\\n\\nTema: ${$json.theme}\\nSanat stili: ${$json.image_style}\\nDil: ${$json.language_name} (${$json.language_code})\\n${$json.user_prompt ? 'Özel istek: ' + $json.user_prompt : ''}\\n\\nKurallar:\\n- Baş kahraman her zaman ${$json.child_name} adlı gerçek bir çocuk olsun\\n- Dil mutlaka ${$json.language_name} olsun\\n- Her sayfa ${$json.child_age} yaşına uygun 2-4 kısa cümle\\n- İlk sayfa giriş, son sayfa mutlu son\\n- Her sayfanın illustration_prompt'u İngilizce ve detaylı olsun\\n\\nYALNIZCA şu JSON formatıyla yanıt ver:\\n{\\n  \"title\": \"${$json.language_name} dilinde başlık\",\\n  \"pages\": [\\n    {\\n      \"page_number\": 1,\\n      \"text\": \"${$json.language_name} dilinde sayfa metni\",\\n      \"illustration_prompt\": \"English: A ${$json.child_age}-year-old child named ${$json.child_name} as the hero, ${$json.theme} setting, ${$json.image_style} art style, children\\'s book illustration, warm colors, whimsical, page 1 scene\"\\n    }\\n  ]\\n}`\n    }\n  ]\n}) }}"
+      }
+    },
+    {
+      "id": "node-06-parse-pages",
+      "name": "Sayfaları Parse Et",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1160, 300],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// OpenAI yanıtını parse et ve her sayfa için ayrı item döndür\nconst response = $input.first().json;\n\nlet content = response?.choices?.[0]?.message?.content;\nif (!content) throw new Error('OpenAI boş yanıt döndürdü: ' + JSON.stringify(response));\n\n// Olası markdown code block temizle\ncontent = content.trim();\nif (content.startsWith('```')) {\n  content = content.replace(/^```(?:json)?\\n?/, '').replace(/\\n?```$/, '');\n}\n\nlet parsed;\ntry {\n  parsed = JSON.parse(content);\n} catch (e) {\n  throw new Error('JSON parse hatası. OpenAI yanıtı: ' + content.substring(0, 300));\n}\n\nif (!parsed.pages || !Array.isArray(parsed.pages)) {\n  throw new Error('OpenAI yanıtında pages dizisi bulunamadı');\n}\n\n// Önceki node'dan hikaye değişkenlerini al\nconst vars = $('Değişkenleri Hazırla').first().json;\n\nconsole.log(`${parsed.pages.length} sayfa parse edildi. Başlık: ${parsed.title}`);\n\n// Her sayfa için ayrı bir item döndür\nreturn parsed.pages.map(page => ({\n  json: {\n    story_id:             vars.story_id,\n    story_title:          parsed.title,\n    page_no:              page.page_number,\n    text:                 page.text,\n    illustration_prompt:  page.illustration_prompt,\n    fal_model:            vars.fal_model,\n    fal_endpoint:         `https://fal.run/${vars.fal_model}`,\n    photo_url:            vars.photo_url,\n    resolution:           vars.resolution,\n    child_name:           vars.child_name,\n    page_count:           vars.page_count,\n    watermark:            vars.watermark,\n  }\n}));"
+      }
+    },
+    {
+      "id": "node-07-insert-page",
+      "name": "Supabase: Sayfayı Kaydet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1380, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/pages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $vars.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $vars.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({\n  story_id:             $json.story_id,\n  page_no:              $json.page_no,\n  text:                 $json.text,\n  illustration_prompt:  $json.illustration_prompt\n}) }}"
+      }
+    },
+    {
+      "id": "node-08-fal-body",
+      "name": "FAL: İstek Gövdesi Hazırla",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1600, 300],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Supabase insert yanıtından page_id al\n// Parse Sayfaları adımından bağlamı paired item ile geri al\nconst insertResult = $input.first().json;\nconst ctx = $('Sayfaları Parse Et').item.json;\n\n// Supabase array ya da tek obje dönebilir\nconst inserted = Array.isArray(insertResult) ? insertResult[0] : insertResult;\nconst page_id = inserted?.id ?? null;\n\nif (!page_id) {\n  throw new Error(`Sayfa ${ctx.page_no} için Supabase insert ID dönmedi. Yanıt: ` + JSON.stringify(insertResult));\n}\n\nconsole.log(`Sayfa ${ctx.page_no} DB'ye eklendi. ID: ${page_id}`);\n\nconst isKontext = ctx.fal_model?.includes('kontext');\nconst isSchnell = ctx.fal_model?.includes('schnell');\n\nconst falBody = {\n  prompt: ctx.illustration_prompt,\n  image_size: 'landscape_4_3',\n  num_images: 1,\n  enable_safety_checker: false,\n};\n\nif (isKontext) {\n  // flux-pro/kontext: karakter tutarlılığı için referans fotoğraf\n  if (ctx.photo_url) falBody.image_url = ctx.photo_url;\n  falBody.num_inference_steps = 28;\n  falBody.guidance_scale = 3.5;\n} else if (isSchnell) {\n  // Hızlı, düşük kalite (ücretsiz tier)\n  falBody.num_inference_steps = 4;\n} else {\n  // flux/dev — orta kalite\n  falBody.num_inference_steps = 20;\n  falBody.guidance_scale = 3.5;\n}\n\nreturn [{\n  json: {\n    page_id,\n    story_id:            ctx.story_id,\n    page_no:             ctx.page_no,\n    fal_endpoint:        ctx.fal_endpoint,\n    fal_body:            falBody,\n    illustration_prompt: ctx.illustration_prompt,\n    photo_url:           ctx.photo_url,\n  }\n}];"
+      }
+    },
+    {
+      "id": "node-09-fal-request",
+      "name": "FAL.AI: Görsel Üret",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1820, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.fal_endpoint }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Key {{ $vars.FAL_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.fal_body) }}",
+        "options": {
+          "timeout": 120000
+        }
+      }
+    },
+    {
+      "id": "node-10-update-page",
+      "name": "Supabase: Görseli Sayfaya Ekle",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2040, 300],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/pages?id=eq.{{ $('FAL: İstek Gövdesi Hazırla').item.json.page_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $vars.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $vars.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ image_url: $json.images?.[0]?.url ?? $json.image?.url ?? null }) }}"
+      }
+    },
+    {
+      "id": "node-11-aggregate",
+      "name": "Tüm Sayfaları Topla",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [2260, 300],
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "pages",
+        "include": "allFields",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-12-extract-story-id",
+      "name": "Story ID Çıkar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2480, 300],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Aggregate sonrasında pages dizisinden story_id'yi al\nconst data = $input.first().json;\nconst pages = data.pages ?? [];\n\nif (!pages.length) throw new Error('Aggregate sonrası sayfa verisi boş');\n\n// Supabase PATCH response içinde story_id alanı var\n// Eğer PATCH return=representation ile döndürdüyse, story_id pages[0].story_id'de\nconst rawPage = Array.isArray(pages[0]) ? pages[0][0] : pages[0];\nconst story_id = rawPage?.story_id ?? null;\n\nif (!story_id) {\n  // Fallback: Sayfaları Parse Et adımından al (eğer paired item erişimi çalışıyorsa)\n  throw new Error('story_id bulunamadı. Sayfa verisi: ' + JSON.stringify(rawPage));\n}\n\nconsole.log(`Tüm sayfalar tamamlandı. PDF üretimi başlıyor. story_id: ${story_id}`);\nreturn [{ json: { story_id } }];"
+      }
+    },
+    {
+      "id": "node-13-generate-pdf",
+      "name": "Edge Function: PDF Oluştur",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2700, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SUPABASE_URL }}/functions/v1/generate-pdf",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ story_id: $json.story_id }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      }
+    },
+    {
+      "id": "node-14-success-log",
+      "name": "Tamamlandı",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2920, 300],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const result = $input.first().json;\nconsole.log('✅ Hikaye başarıyla tamamlandı!');\nconsole.log('PDF URL:', result.pdf_url);\nreturn [{ json: { success: true, pdf_url: result.pdf_url, message: 'Hikaye ve PDF başarıyla oluşturuldu.' } }];"
+      }
+    },
+    {
+      "id": "node-15-error-handler",
+      "name": "Hata: Hikaye Durumunu Güncelle",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [940, 520],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/stories?id=eq.{{ $json.story_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $vars.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $vars.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={\"status\": \"failed\", \"updated_at\": \"{{ new Date().toISOString() }}\"}"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: Hikaye Başlat": {
+      "main": [
+        [{ "node": "Story ID Al", "type": "main", "index": 0 }]
+      ]
+    },
+    "Story ID Al": {
+      "main": [
+        [{ "node": "Supabase: Hikayeyi Çek", "type": "main", "index": 0 }]
+      ]
+    },
+    "Supabase: Hikayeyi Çek": {
+      "main": [
+        [{ "node": "Değişkenleri Hazırla", "type": "main", "index": 0 }]
+      ]
+    },
+    "Değişkenleri Hazırla": {
+      "main": [
+        [{ "node": "OpenAI: Sayfa Metinleri Üret", "type": "main", "index": 0 }]
+      ]
+    },
+    "OpenAI: Sayfa Metinleri Üret": {
+      "main": [
+        [{ "node": "Sayfaları Parse Et", "type": "main", "index": 0 }]
+      ]
+    },
+    "Sayfaları Parse Et": {
+      "main": [
+        [{ "node": "Supabase: Sayfayı Kaydet", "type": "main", "index": 0 }]
+      ]
+    },
+    "Supabase: Sayfayı Kaydet": {
+      "main": [
+        [{ "node": "FAL: İstek Gövdesi Hazırla", "type": "main", "index": 0 }]
+      ]
+    },
+    "FAL: İstek Gövdesi Hazırla": {
+      "main": [
+        [{ "node": "FAL.AI: Görsel Üret", "type": "main", "index": 0 }]
+      ]
+    },
+    "FAL.AI: Görsel Üret": {
+      "main": [
+        [{ "node": "Supabase: Görseli Sayfaya Ekle", "type": "main", "index": 0 }]
+      ]
+    },
+    "Supabase: Görseli Sayfaya Ekle": {
+      "main": [
+        [{ "node": "Tüm Sayfaları Topla", "type": "main", "index": 0 }]
+      ]
+    },
+    "Tüm Sayfaları Topla": {
+      "main": [
+        [{ "node": "Story ID Çıkar", "type": "main", "index": 0 }]
+      ]
+    },
+    "Story ID Çıkar": {
+      "main": [
+        [{ "node": "Edge Function: PDF Oluştur", "type": "main", "index": 0 }]
+      ]
+    },
+    "Edge Function: PDF Oluştur": {
+      "main": [
+        [{ "node": "Tamamlandı", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "versionId": "1",
+  "meta": {
+    "templateId": "my-little-hero-book-v1",
+    "instanceId": "local"
+  }
+}
