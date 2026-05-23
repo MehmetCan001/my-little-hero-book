@@ -1,12 +1,15 @@
-﻿{
-  "name": "My Little Hero Book â€“ Hikaye Ãœretici",
+{
+  "name": "My Little Hero Book - Story Generator",
   "nodes": [
     {
       "id": "node-01-webhook",
-      "name": "Webhook: Hikaye BaÅŸlat",
+      "name": "Webhook: Story Start",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [60, 300],
+      "position": [
+        60,
+        300
+      ],
       "parameters": {
         "httpMethod": "POST",
         "path": "create-story",
@@ -18,10 +21,13 @@
     },
     {
       "id": "node-02-extract-id",
-      "name": "Story ID Al",
+      "name": "Extract Story ID",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [280, 300],
+      "position": [
+        280,
+        300
+      ],
       "parameters": {
         "language": "javaScript",
         "jsCode": "// Webhook payload'dan story_id'yi gÃ¼venli ÅŸekilde Ã§Ä±kar\n// n8n sÃ¼rÃ¼mÃ¼ne gÃ¶re body $json veya $json.body altÄ±nda gelebilir\nconst raw = $input.first().json;\nconst story_id = raw?.body?.story_id ?? raw?.story_id ?? null;\n\nif (!story_id) {\n  throw new Error('Webhook payload\\'da story_id bulunamadÄ±. Gelen veri: ' + JSON.stringify(raw));\n}\n\nconsole.log('story_id alÄ±ndÄ±:', story_id);\nreturn [{ json: { story_id } }];"
@@ -29,19 +35,31 @@
     },
     {
       "id": "node-03-fetch-story",
-      "name": "Supabase: Hikayeyi Ã‡ek",
+      "name": "Supabase: Fetch Story",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [500, 300],
+      "position": [
+        500,
+        300
+      ],
       "parameters": {
         "method": "GET",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/stories?id=eq.{{ $json.story_id }}&select=*,children(name,age,gender),languages(name,code),image_styles(name,label,example_prompt),story_original_images(image_url)",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Accept", "value": "application/json" }
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
           ]
         },
         "options": {}
@@ -49,10 +67,13 @@
     },
     {
       "id": "node-04-set-vars",
-      "name": "DeÄŸiÅŸkenleri HazÄ±rla",
+      "name": "Prepare Variables",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [720, 300],
+      "position": [
+        720,
+        300
+      ],
       "parameters": {
         "language": "javaScript",
         "jsCode": "// Supabase array response'Ä±ndan ilk kaydÄ± al ve flatten et\nconst rows = $input.first().json;\nconst story = Array.isArray(rows) ? rows[0] : rows;\n\nif (!story || !story.id) {\n  throw new Error('Hikaye Supabase\\'da bulunamadÄ±. story_id geÃ§ersiz olabilir.');\n}\n\nconst child = story.children ?? {};\nconst lang  = story.languages ?? {};\nconst style = story.image_styles ?? {};\nconst photos = story.story_original_images ?? [];\nconst photo_url = photos.length > 0 ? photos[0].image_url : null;\n\nconsole.log('Hikaye yÃ¼klendi:', story.id, '| Ã‡ocuk:', child.name, '| Tema:', story.theme);\n\nreturn [{\n  json: {\n    story_id:       story.id,\n    story_title:    story.title ?? `${child.name}'in MacerasÄ±`,\n    child_name:     child.name ?? 'Kahraman',\n    child_age:      child.age ?? 6,\n    child_gender:   child.gender ?? 'prefer-not-to-say',\n    theme:          story.theme ?? 'forest',\n    user_prompt:    story.user_prompt ?? story.prompt ?? '',\n    language_name:  lang.name ?? 'TÃ¼rkÃ§e',\n    language_code:  lang.code ?? 'tr',\n    image_style:    style.label ?? style.name ?? 'Watercolor',\n    style_prompt:   style.example_prompt ?? '',\n    page_count:     story.page_count ?? story.total_pages ?? 8,\n    llm_model:      story.llm_model ?? 'gpt-4o-mini',\n    fal_model:      story.fal_model ?? 'fal-ai/flux/schnell',\n    resolution:     story.resolution ?? '768',\n    watermark:      story.watermark ?? true,\n    photo_url:      photo_url,\n  }\n}];"
@@ -60,18 +81,27 @@
     },
     {
       "id": "node-05-openai",
-      "name": "OpenAI: Sayfa Metinleri Ãœret",
+      "name": "OpenAI: Generate Text",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [940, 300],
+      "position": [
+        940,
+        300
+      ],
       "parameters": {
         "method": "POST",
         "url": "https://api.openai.com/v1/chat/completions",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Authorization", "value": "=Bearer {{ $env.OPENAI_API_KEY }}" },
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.OPENAI_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -82,31 +112,49 @@
     },
     {
       "id": "node-06-parse-pages",
-      "name": "SayfalarÄ± Parse Et",
+      "name": "Parse Pages",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1160, 300],
+      "position": [
+        1160,
+        300
+      ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "// OpenAI yanÄ±tÄ±nÄ± parse et ve her sayfa iÃ§in ayrÄ± item dÃ¶ndÃ¼r\nconst response = $input.first().json;\n\nlet content = response?.choices?.[0]?.message?.content;\nif (!content) throw new Error('OpenAI boÅŸ yanÄ±t dÃ¶ndÃ¼rdÃ¼: ' + JSON.stringify(response));\n\n// OlasÄ± markdown code block temizle\ncontent = content.trim();\nif (content.startsWith('```')) {\n  content = content.replace(/^```(?:json)?\\n?/, '').replace(/\\n?```$/, '');\n}\n\nlet parsed;\ntry {\n  parsed = JSON.parse(content);\n} catch (e) {\n  throw new Error('JSON parse hatasÄ±. OpenAI yanÄ±tÄ±: ' + content.substring(0, 300));\n}\n\nif (!parsed.pages || !Array.isArray(parsed.pages)) {\n  throw new Error('OpenAI yanÄ±tÄ±nda pages dizisi bulunamadÄ±');\n}\n\n// Ã–nceki node'dan hikaye deÄŸiÅŸkenlerini al\nconst vars = $('DeÄŸiÅŸkenleri HazÄ±rla').first().json;\n\nconsole.log(`${parsed.pages.length} sayfa parse edildi. BaÅŸlÄ±k: ${parsed.title}`);\n\n// Her sayfa iÃ§in ayrÄ± bir item dÃ¶ndÃ¼r\nreturn parsed.pages.map(page => ({\n  json: {\n    story_id:             vars.story_id,\n    story_title:          parsed.title,\n    page_no:              page.page_number,\n    text:                 page.text,\n    illustration_prompt:  page.illustration_prompt,\n    fal_model:            vars.fal_model,\n    fal_endpoint:         `https://fal.run/${vars.fal_model}`,\n    photo_url:            vars.photo_url,\n    resolution:           vars.resolution,\n    child_name:           vars.child_name,\n    page_count:           vars.page_count,\n    watermark:            vars.watermark,\n  }\n}));"
+        "jsCode": "// OpenAI yanÄ±tÄ±nÄ± parse et ve her sayfa iÃ§in ayrÄ± item dÃ¶ndÃ¼r\nconst response = $input.first().json;\n\nlet content = response?.choices?.[0]?.message?.content;\nif (!content) throw new Error('OpenAI boÅŸ yanÄ±t dÃ¶ndÃ¼rdÃ¼: ' + JSON.stringify(response));\n\n// OlasÄ± markdown code block temizle\ncontent = content.trim();\nif (content.startsWith('```')) {\n  content = content.replace(/^```(?:json)?\\n?/, '').replace(/\\n?```$/, '');\n}\n\nlet parsed;\ntry {\n  parsed = JSON.parse(content);\n} catch (e) {\n  throw new Error('JSON parse hatasÄ±. OpenAI yanÄ±tÄ±: ' + content.substring(0, 300));\n}\n\nif (!parsed.pages || !Array.isArray(parsed.pages)) {\n  throw new Error('OpenAI yanÄ±tÄ±nda pages dizisi bulunamadÄ±');\n}\n\n// Ã–nceki node'dan hikaye deÄŸiÅŸkenlerini al\nconst vars = $('Prepare Variables').first().json;\n\nconsole.log(`${parsed.pages.length} sayfa parse edildi. BaÅŸlÄ±k: ${parsed.title}`);\n\n// Her sayfa iÃ§in ayrÄ± bir item dÃ¶ndÃ¼r\nreturn parsed.pages.map(page => ({\n  json: {\n    story_id:             vars.story_id,\n    story_title:          parsed.title,\n    page_no:              page.page_number,\n    text:                 page.text,\n    illustration_prompt:  page.illustration_prompt,\n    fal_model:            vars.fal_model,\n    fal_endpoint:         `https://fal.run/${vars.fal_model}`,\n    photo_url:            vars.photo_url,\n    resolution:           vars.resolution,\n    child_name:           vars.child_name,\n    page_count:           vars.page_count,\n    watermark:            vars.watermark,\n  }\n}));"
       }
     },
     {
       "id": "node-07-insert-page",
-      "name": "Supabase: SayfayÄ± Kaydet",
+      "name": "Supabase: Save Page",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1380, 300],
+      "position": [
+        1380,
+        300
+      ],
       "parameters": {
         "method": "POST",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/pages",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Content-Type", "value": "application/json" },
-            { "name": "Prefer", "value": "return=representation" }
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
           ]
         },
         "sendBody": true,
@@ -117,29 +165,41 @@
     },
     {
       "id": "node-08-fal-body",
-      "name": "FAL: Ä°stek GÃ¶vdesi HazÄ±rla",
+      "name": "FAL: Build Request",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1600, 300],
+      "position": [
+        1600,
+        300
+      ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "// Supabase insert yanÄ±tÄ±ndan page_id al\n// Parse SayfalarÄ± adÄ±mÄ±ndan baÄŸlamÄ± paired item ile geri al\nconst insertResult = $input.first().json;\nconst ctx = $('SayfalarÄ± Parse Et').item.json;\n\n// Supabase array ya da tek obje dÃ¶nebilir\nconst inserted = Array.isArray(insertResult) ? insertResult[0] : insertResult;\nconst page_id = inserted?.id ?? null;\n\nif (!page_id) {\n  throw new Error(`Sayfa ${ctx.page_no} iÃ§in Supabase insert ID dÃ¶nmedi. YanÄ±t: ` + JSON.stringify(insertResult));\n}\n\nconsole.log(`Sayfa ${ctx.page_no} DB'ye eklendi. ID: ${page_id}`);\n\nconst isKontext = ctx.fal_model?.includes('kontext');\nconst isSchnell = ctx.fal_model?.includes('schnell');\n\nconst falBody = {\n  prompt: ctx.illustration_prompt,\n  image_size: 'landscape_4_3',\n  num_images: 1,\n  enable_safety_checker: false,\n};\n\nif (isKontext) {\n  // flux-pro/kontext: karakter tutarlÄ±lÄ±ÄŸÄ± iÃ§in referans fotoÄŸraf\n  if (ctx.photo_url) falBody.image_url = ctx.photo_url;\n  falBody.num_inference_steps = 28;\n  falBody.guidance_scale = 3.5;\n} else if (isSchnell) {\n  // HÄ±zlÄ±, dÃ¼ÅŸÃ¼k kalite (Ã¼cretsiz tier)\n  falBody.num_inference_steps = 4;\n} else {\n  // flux/dev â€” orta kalite\n  falBody.num_inference_steps = 20;\n  falBody.guidance_scale = 3.5;\n}\n\nreturn [{\n  json: {\n    page_id,\n    story_id:            ctx.story_id,\n    page_no:             ctx.page_no,\n    fal_endpoint:        ctx.fal_endpoint,\n    fal_body:            falBody,\n    illustration_prompt: ctx.illustration_prompt,\n    photo_url:           ctx.photo_url,\n  }\n}];"
+        "jsCode": "// Supabase insert yanÄ±tÄ±ndan page_id al\n// Parse SayfalarÄ± adÄ±mÄ±ndan baÄŸlamÄ± paired item ile geri al\nconst insertResult = $input.first().json;\nconst ctx = $('Parse Pages').item.json;\n\n// Supabase array ya da tek obje dÃ¶nebilir\nconst inserted = Array.isArray(insertResult) ? insertResult[0] : insertResult;\nconst page_id = inserted?.id ?? null;\n\nif (!page_id) {\n  throw new Error(`Sayfa ${ctx.page_no} iÃ§in Supabase insert ID dÃ¶nmedi. YanÄ±t: ` + JSON.stringify(insertResult));\n}\n\nconsole.log(`Sayfa ${ctx.page_no} DB'ye eklendi. ID: ${page_id}`);\n\nconst isKontext = ctx.fal_model?.includes('kontext');\nconst isSchnell = ctx.fal_model?.includes('schnell');\n\nconst falBody = {\n  prompt: ctx.illustration_prompt,\n  image_size: 'landscape_4_3',\n  num_images: 1,\n  enable_safety_checker: false,\n};\n\nif (isKontext) {\n  // flux-pro/kontext: karakter tutarlÄ±lÄ±ÄŸÄ± iÃ§in referans fotoÄŸraf\n  if (ctx.photo_url) falBody.image_url = ctx.photo_url;\n  falBody.num_inference_steps = 28;\n  falBody.guidance_scale = 3.5;\n} else if (isSchnell) {\n  // HÄ±zlÄ±, dÃ¼ÅŸÃ¼k kalite (Ã¼cretsiz tier)\n  falBody.num_inference_steps = 4;\n} else {\n  // flux/dev â€” orta kalite\n  falBody.num_inference_steps = 20;\n  falBody.guidance_scale = 3.5;\n}\n\nreturn [{\n  json: {\n    page_id,\n    story_id:            ctx.story_id,\n    page_no:             ctx.page_no,\n    fal_endpoint:        ctx.fal_endpoint,\n    fal_body:            falBody,\n    illustration_prompt: ctx.illustration_prompt,\n    photo_url:           ctx.photo_url,\n  }\n}];"
       }
     },
     {
       "id": "node-09-fal-request",
-      "name": "FAL.AI: GÃ¶rsel Ãœret",
+      "name": "FAL.AI: Generate Image",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1820, 300],
+      "position": [
+        1820,
+        300
+      ],
       "parameters": {
         "method": "POST",
         "url": "={{ $json.fal_endpoint }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Authorization", "value": "=Key {{ $env.FAL_API_KEY }}" },
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Authorization",
+              "value": "=Key {{ $env.FAL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -153,20 +213,35 @@
     },
     {
       "id": "node-10-update-page",
-      "name": "Supabase: GÃ¶rseli Sayfaya Ekle",
+      "name": "Supabase: Update Page Image",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2040, 300],
+      "position": [
+        2040,
+        300
+      ],
       "parameters": {
         "method": "PATCH",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/pages?id=eq.{{ $('FAL: Ä°stek GÃ¶vdesi HazÄ±rla').item.json.page_id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Content-Type", "value": "application/json" },
-            { "name": "Prefer", "value": "return=representation" }
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
           ]
         },
         "sendBody": true,
@@ -177,10 +252,13 @@
     },
     {
       "id": "node-11-aggregate",
-      "name": "TÃ¼m SayfalarÄ± Topla",
+      "name": "Aggregate All Pages",
       "type": "n8n-nodes-base.aggregate",
       "typeVersion": 1,
-      "position": [2260, 300],
+      "position": [
+        2260,
+        300
+      ],
       "parameters": {
         "aggregate": "aggregateAllItemData",
         "destinationFieldName": "pages",
@@ -190,29 +268,41 @@
     },
     {
       "id": "node-12-extract-story-id",
-      "name": "Story ID Ã‡Ä±kar",
+      "name": "Extract Story ID for PDF",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2480, 300],
+      "position": [
+        2480,
+        300
+      ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "// Aggregate sonrasÄ±nda pages dizisinden story_id'yi al\nconst data = $input.first().json;\nconst pages = data.pages ?? [];\n\nif (!pages.length) throw new Error('Aggregate sonrasÄ± sayfa verisi boÅŸ');\n\n// Supabase PATCH response iÃ§inde story_id alanÄ± var\n// EÄŸer PATCH return=representation ile dÃ¶ndÃ¼rdÃ¼yse, story_id pages[0].story_id'de\nconst rawPage = Array.isArray(pages[0]) ? pages[0][0] : pages[0];\nconst story_id = rawPage?.story_id ?? null;\n\nif (!story_id) {\n  // Fallback: SayfalarÄ± Parse Et adÄ±mÄ±ndan al (eÄŸer paired item eriÅŸimi Ã§alÄ±ÅŸÄ±yorsa)\n  throw new Error('story_id bulunamadÄ±. Sayfa verisi: ' + JSON.stringify(rawPage));\n}\n\nconsole.log(`TÃ¼m sayfalar tamamlandÄ±. PDF Ã¼retimi baÅŸlÄ±yor. story_id: ${story_id}`);\nreturn [{ json: { story_id } }];"
+        "jsCode": "// Aggregate sonrasÄ±nda pages dizisinden story_id'yi al\nconst data = $input.first().json;\nconst pages = data.pages ?? [];\n\nif (!pages.length) throw new Error('Aggregate sonrasÄ± sayfa verisi boÅŸ');\n\n// Supabase PATCH response iÃ§inde story_id alanÄ± var\n// EÄŸer PATCH return=representation ile dÃ¶ndÃ¼rdÃ¼yse, story_id pages[0].story_id'de\nconst rawPage = Array.isArray(pages[0]) ? pages[0][0] : pages[0];\nconst story_id = rawPage?.story_id ?? null;\n\nif (!story_id) {\n  // Fallback: Parse Pages adÄ±mÄ±ndan al (eÄŸer paired item eriÅŸimi Ã§alÄ±ÅŸÄ±yorsa)\n  throw new Error('story_id bulunamadÄ±. Sayfa verisi: ' + JSON.stringify(rawPage));\n}\n\nconsole.log(`TÃ¼m sayfalar tamamlandÄ±. PDF Ã¼retimi baÅŸlÄ±yor. story_id: ${story_id}`);\nreturn [{ json: { story_id } }];"
       }
     },
     {
       "id": "node-13-generate-pdf",
-      "name": "Edge Function: PDF OluÅŸtur",
+      "name": "Edge Function: Generate PDF",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2700, 300],
+      "position": [
+        2700,
+        300
+      ],
       "parameters": {
         "method": "POST",
         "url": "={{ $env.SUPABASE_URL }}/functions/v1/generate-pdf",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -226,10 +316,13 @@
     },
     {
       "id": "node-14-success-log",
-      "name": "TamamlandÄ±",
+      "name": "Done",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2920, 300],
+      "position": [
+        2920,
+        300
+      ],
       "parameters": {
         "language": "javaScript",
         "jsCode": "const result = $input.first().json;\nconsole.log('âœ… Hikaye baÅŸarÄ±yla tamamlandÄ±!');\nconsole.log('PDF URL:', result.pdf_url);\nreturn [{ json: { success: true, pdf_url: result.pdf_url, message: 'Hikaye ve PDF baÅŸarÄ±yla oluÅŸturuldu.' } }];"
@@ -237,19 +330,31 @@
     },
     {
       "id": "node-15-error-handler",
-      "name": "Hata: Hikaye Durumunu GÃ¼ncelle",
+      "name": "Error: Set Status Failed",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [940, 520],
+      "position": [
+        940,
+        520
+      ],
       "parameters": {
         "method": "PATCH",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/stories?id=eq.{{ $json.story_id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -260,69 +365,147 @@
     }
   ],
   "connections": {
-    "Webhook: Hikaye BaÅŸlat": {
+    "Webhook: Story Start": {
       "main": [
-        [{ "node": "Story ID Al", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Extract Story ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Story ID Al": {
+    "Extract Story ID": {
       "main": [
-        [{ "node": "Supabase: Hikayeyi Ã‡ek", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Supabase: Fetch Story",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Supabase: Hikayeyi Ã‡ek": {
+    "Supabase: Fetch Story": {
       "main": [
-        [{ "node": "DeÄŸiÅŸkenleri HazÄ±rla", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Prepare Variables",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "DeÄŸiÅŸkenleri HazÄ±rla": {
+    "Prepare Variables": {
       "main": [
-        [{ "node": "OpenAI: Sayfa Metinleri Ãœret", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "OpenAI: Generate Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "OpenAI: Sayfa Metinleri Ãœret": {
+    "OpenAI: Generate Text": {
       "main": [
-        [{ "node": "SayfalarÄ± Parse Et", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Parse Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "SayfalarÄ± Parse Et": {
+    "Parse Pages": {
       "main": [
-        [{ "node": "Supabase: SayfayÄ± Kaydet", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Supabase: Save Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Supabase: SayfayÄ± Kaydet": {
+    "Supabase: Save Page": {
       "main": [
-        [{ "node": "FAL: Ä°stek GÃ¶vdesi HazÄ±rla", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "FAL: Build Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "FAL: Ä°stek GÃ¶vdesi HazÄ±rla": {
+    "FAL: Build Request": {
       "main": [
-        [{ "node": "FAL.AI: GÃ¶rsel Ãœret", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "FAL.AI: Generate Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "FAL.AI: GÃ¶rsel Ãœret": {
+    "FAL.AI: Generate Image": {
       "main": [
-        [{ "node": "Supabase: GÃ¶rseli Sayfaya Ekle", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Supabase: Update Page Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Supabase: GÃ¶rseli Sayfaya Ekle": {
+    "Supabase: Update Page Image": {
       "main": [
-        [{ "node": "TÃ¼m SayfalarÄ± Topla", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Aggregate All Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "TÃ¼m SayfalarÄ± Topla": {
+    "Aggregate All Pages": {
       "main": [
-        [{ "node": "Story ID Ã‡Ä±kar", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Extract Story ID for PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Story ID Ã‡Ä±kar": {
+    "Extract Story ID for PDF": {
       "main": [
-        [{ "node": "Edge Function: PDF OluÅŸtur", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Edge Function: Generate PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Edge Function: PDF OluÅŸtur": {
+    "Edge Function: Generate PDF": {
       "main": [
-        [{ "node": "TamamlandÄ±", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
@@ -342,4 +525,3 @@
     "instanceId": "local"
   }
 }
-
